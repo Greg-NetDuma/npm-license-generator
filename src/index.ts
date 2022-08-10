@@ -130,7 +130,14 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
         return false;
       });
       for (const path of files) {
-        license.text.push(fs.readFileSync(path).toString().trim());
+        license.text.push(
+          fs
+            .readFileSync(path)
+            .toString()
+            .trim()
+            .replace(/\r\n/gm, "\n")
+            .replace(/ +$/gm, "")
+        );
       }
     } catch (e) {
       /* empty */
@@ -160,7 +167,6 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
     });
 
     if (hasTarball) {
-
       // Extract license
       const extractFolder = path.join(TMP_FOLDER_PATH, fileName);
       if (!fs.existsSync(extractFolder)) {
@@ -186,7 +192,14 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
       // Throw license files into array
       const files = getAllFiles(extractFolder);
       for (const path of files) {
-        license.text.push(fs.readFileSync(path).toString().trim());
+        license.text.push(
+          fs
+            .readFileSync(path)
+            .toString()
+            .trim()
+            .replace(/\r\n/gm, "\n")
+            .replace(/ +$/gm, "")
+        );
       }
     }
   }
