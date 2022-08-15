@@ -72,6 +72,7 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
   await new Promise<boolean>((resolve) => {
     superagent
       .get(url.toString())
+      .timeout(60000)
       .then((res) => {
         license.type = res.body.license;
         if (!res.body.license) {
@@ -152,6 +153,7 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
       }
       superagent
         .get(pkg.tarball)
+        .timeout(60000)
         .buffer(true)
         .parse(superagent.parse["application/octet-stream"])
         .then((res) => {
@@ -253,6 +255,7 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
               .get(
                 `https://raw.githubusercontent.com/spdx/license-list-data/master/text/${licenseString}.txt`
               )
+              .timeout(60000)
               .use(superagentCache)
               .then((res) => {
                 license.text.push(res.text);
