@@ -71,7 +71,8 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
     type: "",
     text: [],
   };
-  for (const registry of REGISTRY) {
+  for (let i = 0; i < REGISTRY.length; i++) {
+    const registry = REGISTRY[i];
     const url = new URL(registry);
     url.pathname = pkg.name;
     // Get registry info
@@ -128,7 +129,7 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
         });
     });
 
-    if (!result) {
+    if (!result && i != REGISTRY.length - 1) {
       continue;
     }
 
