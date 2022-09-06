@@ -27,11 +27,11 @@ function findAuthToken(
   }
 
   let token: string | null = authTokenLine.substr(
-    `//${registry}/:_authToken=`.length
+    `//${registry}/:_authToken=`.length - 1
   );
 
   if (token?.startsWith("$")) {
-    token = token.replace(/$\{\}/g, "");
+    token = token.replace(/[${}]/g, "");
     token = process.env[token] ?? null;
   }
 
