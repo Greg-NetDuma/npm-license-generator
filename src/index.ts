@@ -22,16 +22,15 @@ const superagentCache = cachePlugin(cache);
 superagentProxy(superagent);
 const proxy = process.env.http_proxy || "";
 
-let AUTH_TOKEN = "";
+const AUTH_TOKEN: Record<string, string | null> = {};
 let CWD = "";
-let REGISTRY = "";
+let REGISTRY: string[] = ["https://registry.npmjs.org"];
 let PKG_JSON_PATH = "";
 let PKG_LOCK_JSON_PATH = "";
 let NODE_MODULES_PATH = "";
 let TMP_FOLDER_PATH = "";
 let OUT_PATH = "";
 let TEMPLATE_PATH = "";
-let AUTH = false;
 let GROUP = true;
 let RUN_PKG_LOCK = false;
 let SPDX = true;
@@ -72,120 +71,72 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
     type: "",
     text: [],
   };
-  const url = new URL(REGISTRY);
-  url.pathname = pkg.name;
-  // Get registry info
-  await new Promise<boolean>((resolve) => {
-    superagent
-      .get(url.toString())
-      .proxy(proxy)
-      .auth(AUTH_TOKEN, { type: "bearer" })
-      .timeout(10000)
-      .then((res) => {
-        license.type = res.body.license;
-        if (!res.body.license) {
-          try {
-            license.type = res.body.versions[pkg.version].license;
-          } catch (e) {
-            console.error(
-              `Could not find license info in registry for ${pkg.name} ${pkg.version}`
-            );
-            resolve(false);
-          }
-        }
-        license.pkg.homepage = res.body.homepage || res.body.repository?.url;
-        if (!pkg.tarball) {
-          try {
-            pkg.tarball = res.body.versions[pkg.version].dist.tarball;
-          } catch (e) {
-            console.error(
-              `Could not find version info for ${pkg.name} ${pkg.version}`
-            );
-            resolve(false);
-          }
-        }
-        resolve(true);
-      })
-      .catch((e) => {
-        if (e?.status) {
-          console.warn(
-            `Could not get info from registry for ${pkg.name}! HTTP status code ${e.status}`
-          );
-        } else {
-          console.warn(
-            `Could not get info from registry for ${pkg.name}! Error: ${e}`
-          );
-        }
-        resolve(false);
-      });
-  });
-
-  // look for license in node_modules
-  if (!ONLY_SPDX) {
-    try {
-      let files = getAllFiles(path.join(NODE_MODULES_PATH, pkg.name));
-      files = files.filter((path) => {
-        const regex = /[/\\](LICENSE|LICENCE|COPYING|COPYRIGHT)\.?.*/gim;
-        const extension = path.split(".");
-        if (NO_MATCH_EXTENSIONS.includes(extension[extension.length - 1])) {
-          return false;
-        }
-        if (regex.test(path)) {
-          return true;
-        }
-        return false;
-      });
-      for (const path of files) {
-        license.text.push(
-          fs
-            .readFileSync(path)
-            .toString()
-            .trim()
-            .replace(/\r\n/gm, "\n")
-            .replace(/ +$/gm, "")
-        );
-      }
-    } catch (e) {
-      /* empty */
-    }
-  }
-
-  // Download tarball if not found locally
-  const fileName = `${pkg.name.replace("/", ".")}-${pkg.version}`;
-  if (!ONLY_SPDX && !license.text.length) {
-    const hasTarball = await new Promise<boolean>((resolve) => {
-      if (!pkg.tarball) {
-        console.error("No tarball location", pkg);
-        resolve(false);
-        return license;
-      }
+  for (const registry of REGISTRY) {
+    const url = new URL(registry);
+    url.pathname = pkg.name;
+    // Get registry info
+    const result = await new Promise<boolean>((resolve) => {
       superagent
-        .get(pkg.tarball)
+        .get(url.toString())
         .proxy(proxy)
-        .auth(AUTH_TOKEN, { type: "bearer" })
+        .auth(AUTH_TOKEN[registry] ?? "", { type: "bearer" })
         .timeout(10000)
-        .buffer(true)
-        .parse(superagent.parse["application/octet-stream"])
         .then((res) => {
-          fs.writeFileSync(
-            path.join(TMP_FOLDER_PATH, fileName + ".tgz"),
-            res.body
-          );
+          license.type = res.body.license;
+          if (!res.body.license) {
+            try {
+              license.type = res.body.versions[pkg.version].license;
+            } catch (e) {
+              console.error(
+                `Could not find license info in registry for ${pkg.name} ${pkg.version}`
+              );
+              resolve(false);
+              return;
+            }
+          }
+          license.pkg.homepage = res.body.homepage || res.body.repository?.url;
+          if (!pkg.tarball) {
+            try {
+              pkg.tarball = res.body.versions[pkg.version].dist.tarball;
+            } catch (e) {
+              console.error(
+                `Could not find version info for ${pkg.name} ${pkg.version}`
+              );
+              resolve(false);
+              return;
+            }
+          }
           resolve(true);
+          return;
+        })
+        .catch((e) => {
+          if (e?.status) {
+            if (parseInt(e.status) == 404) {
+              resolve(false);
+              return;
+            }
+            console.warn(
+              `Could not get info from registry for ${pkg.name}! HTTP status code ${e.status}`
+            );
+          } else {
+            console.warn(
+              `Could not get info from registry for ${pkg.name}! Error: ${e}`
+            );
+          }
+          resolve(false);
+          return;
         });
     });
 
-    if (hasTarball) {
-      // Extract license
-      const extractFolder = path.join(TMP_FOLDER_PATH, fileName);
-      if (!fs.existsSync(extractFolder)) {
-        fs.mkdirSync(extractFolder);
-      }
-      await tar.extract({
-        cwd: extractFolder,
-        file: path.join(TMP_FOLDER_PATH, fileName + ".tgz"),
-        // strip: 1,
-        filter: (path) => {
+    if (!result) {
+      continue;
+    }
+
+    // look for license in node_modules
+    if (!ONLY_SPDX) {
+      try {
+        let files = getAllFiles(path.join(NODE_MODULES_PATH, pkg.name));
+        files = files.filter((path) => {
           const regex = /[/\\](LICENSE|LICENCE|COPYING|COPYRIGHT)\.?.*/gim;
           const extension = path.split(".");
           if (NO_MATCH_EXTENSIONS.includes(extension[extension.length - 1])) {
@@ -195,20 +146,82 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
             return true;
           }
           return false;
-        },
+        });
+        for (const path of files) {
+          license.text.push(
+            fs
+              .readFileSync(path)
+              .toString()
+              .trim()
+              .replace(/\r\n/gm, "\n")
+              .replace(/ +$/gm, "")
+          );
+        }
+      } catch (e) {
+        /* empty */
+      }
+    }
+
+    // Download tarball if not found locally
+    const fileName = `${pkg.name.replace("/", ".")}-${pkg.version}`;
+    if (!ONLY_SPDX && !license.text.length) {
+      const hasTarball = await new Promise<boolean>((resolve) => {
+        if (!pkg.tarball) {
+          console.error("No tarball location", pkg);
+          resolve(false);
+          return license;
+        }
+        superagent
+          .get(pkg.tarball)
+          .proxy(proxy)
+          .auth(AUTH_TOKEN[registry] ?? "", { type: "bearer" })
+          .timeout(10000)
+          .buffer(true)
+          .parse(superagent.parse["application/octet-stream"])
+          .then((res) => {
+            fs.writeFileSync(
+              path.join(TMP_FOLDER_PATH, fileName + ".tgz"),
+              res.body
+            );
+            resolve(true);
+          });
       });
 
-      // Throw license files into array
-      const files = getAllFiles(extractFolder);
-      for (const path of files) {
-        license.text.push(
-          fs
-            .readFileSync(path)
-            .toString()
-            .trim()
-            .replace(/\r\n/gm, "\n")
-            .replace(/ +$/gm, "")
-        );
+      if (hasTarball) {
+        // Extract license
+        const extractFolder = path.join(TMP_FOLDER_PATH, fileName);
+        if (!fs.existsSync(extractFolder)) {
+          fs.mkdirSync(extractFolder);
+        }
+        await tar.extract({
+          cwd: extractFolder,
+          file: path.join(TMP_FOLDER_PATH, fileName + ".tgz"),
+          // strip: 1,
+          filter: (path) => {
+            const regex = /[/\\](LICENSE|LICENCE|COPYING|COPYRIGHT)\.?.*/gim;
+            const extension = path.split(".");
+            if (NO_MATCH_EXTENSIONS.includes(extension[extension.length - 1])) {
+              return false;
+            }
+            if (regex.test(path)) {
+              return true;
+            }
+            return false;
+          },
+        });
+
+        // Throw license files into array
+        const files = getAllFiles(extractFolder);
+        for (const path of files) {
+          license.text.push(
+            fs
+              .readFileSync(path)
+              .toString()
+              .trim()
+              .replace(/\r\n/gm, "\n")
+              .replace(/ +$/gm, "")
+          );
+        }
       }
     }
   }
@@ -297,14 +310,10 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
 }
 
 async function main(): Promise<void> {
-  if (AUTH) {
-    const url = new URL(REGISTRY);
-    AUTH_TOKEN = retrieveAuthToken(url.host) || "";
-
-    if (!AUTH_TOKEN) {
-      console.error(`Error read token from .npmrc for registry ${url.host}`);
-      process.exit(1);
-    }
+  for (const regsitry of REGISTRY) {
+    const url = new URL(regsitry);
+    const fullPath = url.toString().replace(/^(http|https):\/\//, "") || "";
+    AUTH_TOKEN[regsitry] = retrieveAuthToken(fullPath);
   }
 
   let pkgInfo: PkgJsonData | undefined;
@@ -435,7 +444,7 @@ yargs
       .option("registry", {
         describe: "URL of package registry to use",
         type: "string",
-        default: "https://registry.npmjs.org",
+        default: null,
       })
       .option("tmp-folder-name", {
         describe: "Name of temporary folder",
@@ -480,7 +489,10 @@ yargs
 
     const folder = argv.folder || argv._[0];
     CWD = folder ? path.resolve(folder) : process.cwd();
-    REGISTRY = argv.registry;
+    REGISTRY =
+      argv.registry == null
+        ? REGISTRY
+        : [...REGISTRY, (argv.registry as any) as string];
     PKG_JSON_PATH = path.resolve(CWD, "package.json");
     PKG_LOCK_JSON_PATH = path.resolve(CWD, "package-lock.json");
     TMP_FOLDER_PATH = path.resolve(CWD, argv["tmp-folder-name"]);
@@ -494,7 +506,6 @@ yargs
           !GROUP ? "template.html" : "template-grouped.html"
         );
     RUN_PKG_LOCK = argv["package-lock"];
-    AUTH = argv["auth"];
     SPDX = argv["spdx"];
     ONLY_SPDX = argv["only-spdx"];
     ERR_MISSING = argv["error-missing"];
