@@ -1,6 +1,6 @@
 {
   "name": "@netduma/npm-license-generator",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Generate HTML with license text from NPM dependencies",
   "bin": {
     "npm-license-generator": "./build/npm-license-generator"

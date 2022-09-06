@@ -225,6 +225,8 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
         }
       }
     }
+
+    break;
   }
 
   if (!license.text.length) {
