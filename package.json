@@ -1,6 +1,6 @@
 {
-  "name": "npm-license-generator",
-  "version": "1.0.2",
+  "name": "@netduma/npm-license-generator",
+  "version": "1.2.0",
   "description": "Generate HTML with license text from NPM dependencies",
   "bin": {
     "npm-license-generator": "./build/npm-license-generator"
@@ -11,7 +11,8 @@
   "scripts": {
     "build": "eslint --fix src/* && tsc && cp -p -r lib/* build",
     "build-only": "tsc && cp -p -r lib/* build",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "prepare": "npm run build"
   },
   "author": "Brendan Early <mymindstorm@evermiss.net>",
   "license": "MIT",
