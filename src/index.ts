@@ -1,4 +1,4 @@
-import superagent from "superagent";
+import superagent, { SuperAgentRequest } from "superagent";
 import { URL } from "url";
 import process from "process";
 import path from "path";
@@ -36,6 +36,7 @@ let RUN_PKG_LOCK = false;
 let SPDX = true;
 let ONLY_SPDX = false;
 let ERR_MISSING = false;
+let INSECURE = false;
 const NO_MATCH_EXTENSIONS = [
   "js",
   "ts",
@@ -77,8 +78,11 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
     url.pathname = pkg.name;
     // Get registry info
     const result = await new Promise<boolean>((resolve) => {
-      superagent
-        .get(url.toString())
+      let req = superagent.get(url.toString());
+      if (INSECURE) {
+        req = req.disableTLSCerts();
+      }
+      req
         .proxy(proxy)
         .auth(AUTH_TOKEN[registry] ?? "", { type: "bearer" })
         .timeout(10000)
@@ -172,8 +176,11 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
           resolve(false);
           return license;
         }
-        superagent
-          .get(pkg.tarball)
+        let req = superagent.get(pkg.tarball);
+        if (INSECURE) {
+          req = req.disableTLSCerts();
+        }
+        req
           .proxy(proxy)
           .auth(AUTH_TOKEN[registry] ?? "", { type: "bearer" })
           .timeout(10000)
@@ -277,10 +284,13 @@ async function getPkgLicense(pkg: PkgInfo): Promise<LicenseInfo> {
 
         for (const licenseString of licenseStrings) {
           await new Promise<void>((resolve) => {
-            superagent
-              .get(
-                `https://raw.githubusercontent.com/spdx/license-list-data/master/text/${licenseString}.txt`
-              )
+            let req = superagent.get(
+              `https://raw.githubusercontent.com/spdx/license-list-data/master/text/${licenseString}.txt`
+            );
+            if (INSECURE) {
+              req = req.disableTLSCerts();
+            }
+            req
               .proxy(proxy)
               .timeout(10000)
               .use(superagentCache)
@@ -464,6 +474,11 @@ yargs
         type: "boolean",
         default: false,
       })
+      .option("insecure", {
+        describe: "Disable SSL certificate validation",
+        type: "boolean",
+        default: false,
+      })
       .option("group", {
         describe: "Group licenses",
         type: "boolean",
@@ -496,6 +511,7 @@ yargs
       argv.registry == null
         ? REGISTRY
         : [...REGISTRY, (argv.registry as any) as string];
+    INSECURE = argv["insecure"] ?? false;
     PKG_JSON_PATH = path.resolve(CWD, "package.json");
     PKG_LOCK_JSON_PATH = path.resolve(CWD, "package-lock.json");
     TMP_FOLDER_PATH = path.resolve(CWD, argv["tmp-folder-name"]);
